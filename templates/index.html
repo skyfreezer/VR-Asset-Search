@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VR Asset Search</title>
+<style>
+
+  :root {
+    --bg:        #0a0b0f;
+    --bg2:       #111318;
+    --bg3:       #181c24;
+    --border:    #ffffff12;
+    --border2:   #ffffff20;
+    --text:      #e8e9f0;
+    --muted:     #6b7280;
+    --accent:    #7c6af7;
+    --accent2:   #a78bfa;
+    --gumroad:   #f87171;
+    --jinxxy:    #34d399;
+    --payhip:    #fbbf24;
+    --free:      #4ade80;
+    --mono:      'Space Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+  /* ── Layout ── */
+  .shell { display: flex; height: 100vh; overflow: hidden; }
+
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .logo {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .logo-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* new badge */
+  .new-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-family: var(--mono);
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #1a3a1a;
+    color: var(--free);
+    border: 1px solid #166534;
+    margin-left: 4px;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+  }
+
+  .sidebar-section {
+    padding: 16px 16px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .ctrl-group { padding: 0 16px 16px; }
+
+  label.ctrl-label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  select, input[type="number"] {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    outline: none;
+    appearance: none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+
+  .run-btn {
+    width: calc(100% - 32px);
+    margin: 0 16px 8px;
+    padding: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .run-btn:hover:not(:disabled) { background: var(--accent2); }
+  .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* type-filter grid in sidebar */
+  .type-filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 16px 6px;
+  }
+  .type-filter-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .type-all-btn {
+    font-size: 10px;
+    font-family: var(--mono);
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    border-radius: 4px;
+    padding: 2px 7px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .type-all-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+  .type-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 0 16px 12px;
+  }
+  .type-toggle {
+    padding: 5px 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--sans);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.12s;
+  }
+  .type-toggle:hover { border-color: var(--accent); color: var(--accent2); }
+  .type-toggle.active { background: #12221a; border-color: var(--jinxxy); color: var(--jinxxy); }
+
+  .export-row {
+    display: flex;
+    gap: 8px;
+    padding: 0 16px 16px;
+  }
+  .export-btn {
+    flex: 1;
+    padding: 7px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: border-color 0.15s;
+  }
+  .export-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .export-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* stats in sidebar */
+  .stat-box {
+    margin: 0 16px 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-box-title { font-size: 10px; color: var(--muted); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .stat-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+  .stat-row:last-child { border: none; }
+  .stat-val { font-weight: 600; color: var(--accent2); font-family: var(--mono); font-size: 11px; }
+  .badge-j { color: var(--jinxxy); }
+  .badge-g { color: var(--gumroad); }
+
+  /* pw status */
+  .pw-pill {
+    margin: 0 16px 16px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .pw-pill.ok  { background: #052e16; border: 1px solid #166534; color: #4ade80; }
+  .pw-pill.off { background: #1c1207; border: 1px solid #713f12; color: #fbbf24; }
+  .pw-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+  /* ── Top bar ── */
+  .topbar {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: var(--bg2);
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 180px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-family: var(--sans);
+    font-size: 13px;
+    outline: none;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+
+  .filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    cursor: pointer;
+    background: transparent;
+    font-family: var(--sans);
+    transition: all 0.12s;
+    white-space: nowrap;
+  }
+  .pill:hover { border-color: var(--accent); color: var(--accent2); }
+  .pill.active { background: #2e1f7a; border-color: var(--accent); color: var(--accent2); }
+  .pill.src-jinxxy.active { background: #052e16; border-color: var(--jinxxy); color: var(--jinxxy); }
+  .pill.src-gumroad.active { background: #2a0a0a; border-color: var(--gumroad); color: var(--gumroad); }
+  .pill.src-booth.active   { background: #1a1040; border-color: #7c3aed; color: #a78bfa; }
+  .pill.src-payhip.active  { background: #2a220a; border-color: var(--payhip); color: var(--payhip); }
+  .pill.new-only.active    { background: #052e16; border-color: var(--free); color: var(--free); }
+
+  /* ── Log console ── */
+  .console-bar {
+    padding: 0 20px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.3s;
+  }
+  .console-bar.open { max-height: 130px; }
+  .console-inner {
+    height: 120px;
+    overflow-y: auto;
+    padding: 10px 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #a0aec0;
+    line-height: 1.8;
+  }
+  .log-line { padding: 1px 0; }
+  .log-line.done  { color: var(--free); }
+  .log-line.error { color: var(--gumroad); }
+  .log-line.pw    { color: var(--accent2); }
+
+  /* progress */
+  .progress-wrap {
+    height: 2px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width 0.4s ease;
+  }
+
+  /* ── Grid ── */
+  .content { flex: 1; overflow-y: auto; padding: 20px; }
+
+  .results-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .results-meta strong { color: var(--text); font-family: var(--mono); }
+
+  .asset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+
+  .asset-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.15s, transform 0.15s;
+    cursor: pointer;
+  }
+  .asset-card:hover {
+    border-color: var(--border2);
+    transform: translateY(-2px);
+  }
+
+  .asset-thumb {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: var(--bg3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+  }
+  .asset-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .asset-body { padding: 10px 12px; }
+  .asset-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .asset-creator { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .asset-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .asset-price { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--text); }
+  .asset-price.free { color: var(--free); }
+  .src-tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-family: var(--mono);
+    font-weight: 700;
+  }
+  .src-tag.jinxxy { background: #052e16; color: var(--jinxxy); border: 1px solid #166534; }
+  .src-tag.gumroad { background: #2a0a0a; color: var(--gumroad); border: 1px solid #7f1d1d; }
+  .src-tag.booth   { background: #1a1040; color: #a78bfa; border: 1px solid #5b21b6; }
+  .src-tag.payhip  { background: #2a220a; color: var(--payhip); border: 1px solid #92400e; }
+  .type-pill {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* empty / loading */
+  .empty {
+    grid-column: 1/-1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-title { font-size: 16px; color: var(--text); font-weight: 500; margin-bottom: 6px; }
+  .empty-sub { font-size: 13px; }
+
+  /* pagination */
+  .pagination {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding: 20px 0 0;
+    flex-wrap: wrap;
+  }
+  .page-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: all 0.12s;
+  }
+  .page-btn:hover { border-color: var(--accent); color: var(--accent2); }
+  .page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* status indicator */
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .status-dot.idle    { background: var(--muted); }
+  .status-dot.running { background: var(--accent2); animation: pulse 1s infinite; }
+  .status-dot.done    { background: var(--free); }
+  .status-dot.error   { background: var(--gumroad); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .status-text { font-size: 11px; font-family: var(--mono); color: var(--muted); }
+
+  /* ── Mobile drawer controls ── */
+  .menu-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 11px;
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .close-sidebar-btn {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .close-sidebar-btn:hover { color: var(--text); }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 40;
+    backdrop-filter: blur(2px);
+  }
+  .sidebar-overlay.open { display: block; }
+
+  /* topbar filter row wrapper — lets us scroll it as a unit on mobile */
+  .topbar-filters {
+    display: contents; /* transparent on desktop — children behave normally in the flex parent */
+  }
+
+  /* ── 768px — tablet / large phone ── */
+  @media (max-width: 768px) {
+    .shell { height: 100dvh; }
+
+    .menu-btn          { display: flex; }
+    .close-sidebar-btn { display: block; }
+
+    /* Sidebar becomes a fixed left drawer */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 100%; height: 100dvh;
+      z-index: 50;
+      width: 280px;
+      transform: translateX(-100%);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .sidebar.open {
+      transform: translateX(0);
+      box-shadow: 8px 0 32px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Main takes full width */
+    .main { width: 100%; min-width: 0; }
+
+    /* Topbar: two-row layout */
+    .topbar {
+      padding: 10px 12px;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .menu-btn    { order: 1; flex-shrink: 0; }
+    .search-input { order: 2; flex: 1; min-width: 0; }
+    .topbar > .status-indicator { order: 3; flex-shrink: 0; }
+
+    /* Filter row: full-width, horizontally scrollable */
+    .topbar-filters {
+      display: flex;
+      order: 4;
+      width: 100%;
+      gap: 8px;
+      align-items: center;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+    .topbar-filters::-webkit-scrollbar { display: none; }
+
+    /* Pills inside the filter row: don't wrap */
+    .topbar-filters .filter-pills { flex-wrap: nowrap; }
+
+    /* Hide type pills in topbar — the sidebar's pre-crawl type grid covers this */
+    #type-pills { display: none; }
+
+    /* Sort select compact */
+    #sort-select { flex-shrink: 0; font-size: 11px; padding: 5px 8px; }
+
+    /* Asset grid */
+    .asset-grid {
+      grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+      gap: 10px;
+    }
+
+    .content { padding: 12px; }
+
+    .console-inner { font-size: 10px; }
+    .console-bar.open { max-height: 110px; }
+
+    .page-btn { padding: 5px 10px; font-size: 11px; }
+    .results-meta { flex-direction: column; align-items: flex-start; gap: 2px; }
+  }
+
+  /* ── 420px — small phones ── */
+  @media (max-width: 420px) {
+    .asset-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .asset-body { padding: 7px 9px; }
+    .asset-title { font-size: 12px; }
+    .asset-thumb { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<div class="shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="logo" style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;">
+        <div class="logo-title">VR Asset Search</div>
+        <div class="logo-sub">Jinxxy + Gumroad + Booth + Payhip</div>
+      </div>
+      <button class="close-sidebar-btn" onclick="closeSidebar()" aria-label="Close menu">✕</button>
+    </div>
+
+    <div class="sidebar-section">Crawl settings</div>
+
+    <div class="ctrl-group">
+      <label class="ctrl-label">Source</label>
+      <select id="src-select">
+        <option value="all">All sources</option>
+        <option value="jinxxy">Jinxxy only</option>
+        <option value="gumroad">Gumroad only</option>
+        <option value="booth">Booth.pm only</option>
+        <option value="payhip">Payhip only</option>
+      </select>
+    </div>
+
+    <div class="ctrl-group">
+      <label class="ctrl-label">Pages per query</label>
+      <input type="number" id="pages-input" value="3" min="1" max="10">
+    </div>
+
+    <div class="type-filter-header">
+      <span class="type-filter-label">Asset types</span>
+      <button class="type-all-btn" id="type-all-btn" onclick="toggleAllTypes()">None</button>
+    </div>
+    <div class="type-grid" id="type-grid"></div>
+
+    <button class="run-btn" id="run-btn" onclick="startCrawl()">▶ START CRAWL</button>
+
+    <div class="sidebar-section">Export</div>
+    <div class="export-row">
+      <button class="export-btn" id="export-json" onclick="exportData('json')" disabled>JSON</button>
+      <button class="export-btn" id="export-csv"  onclick="exportData('csv')"  disabled>CSV</button>
+    </div>
+
+    <div class="sidebar-section">Stats</div>
+    <div class="stat-box" id="stats-box">
+      <div class="stat-box-title">Summary</div>
+      <div class="stat-row"><span>Total</span><span class="stat-val" id="s-total">—</span></div>
+      <div class="stat-row"><span class="badge-j">Jinxxy</span><span class="stat-val" id="s-jinxxy">—</span></div>
+      <div class="stat-row"><span class="badge-g">Gumroad</span><span class="stat-val" id="s-gumroad">—</span></div>
+      <div class="stat-row"><span style="color:#a78bfa">Booth.pm</span><span class="stat-val" id="s-booth">—</span></div>
+      <div class="stat-row"><span style="color:var(--payhip)">Payhip</span><span class="stat-val" id="s-payhip">—</span></div>
+      <div class="stat-row"><span>Free</span><span class="stat-val" id="s-free">—</span></div>
+      <div class="stat-row"><span>Paid</span><span class="stat-val" id="s-paid">—</span></div>
+      <div class="stat-row"><span style="color:var(--free)">New this run</span><span class="stat-val" id="s-new" style="color:var(--free)">—</span></div>
+    </div>
+
+    <div class="stat-box" id="type-box" style="margin-bottom:16px;">
+      <div class="stat-box-title">By type</div>
+      <div id="type-rows"><div style="font-size:11px;color:var(--muted);">No data yet</div></div>
+    </div>
+
+    <div class="sidebar-section">Playwright</div>
+    <div class="pw-pill" id="pw-pill">
+      <span class="pw-dot"></span>
+      <span id="pw-label">Checking…</span>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <div class="main">
+
+    <!-- Top bar -->
+    <div class="topbar">
+      <button class="menu-btn" onclick="openSidebar()" aria-label="Open settings">☰</button>
+      <input class="search-input" id="search" placeholder="Search title, creator, tag…" oninput="debouncedSearch()">
+      <span class="status-indicator">
+        <span class="status-dot idle" id="status-dot"></span>
+        <span class="status-text" id="status-text">idle</span>
+      </span>
+
+      <div class="topbar-filters">
+        <div class="filter-pills" id="src-pills">
+          <button class="pill src-all active" data-src="all" onclick="setSrc(this)">All</button>
+          <button class="pill src-jinxxy" data-src="jinxxy" onclick="setSrc(this)">Jinxxy</button>
+          <button class="pill src-gumroad" data-src="gumroad" onclick="setSrc(this)">Gumroad</button>
+          <button class="pill src-booth" data-src="booth" onclick="setSrc(this)">Booth.pm</button>
+          <button class="pill src-payhip" data-src="payhip" onclick="setSrc(this)">Payhip</button>
+          <button class="pill new-only" id="new-only-btn" onclick="toggleNewOnly(this)">✦ New only</button>
+        </div>
+        <select id="sort-select" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;font-family:var(--sans);outline:none;" onchange="onSortChange()">
+          <option value="new_first">New first</option>
+          <option value="title">Title A–Z</option>
+          <option value="price_asc">Price low–high</option>
+          <option value="price_desc">Price high–low</option>
+        </select>
+        <div class="filter-pills" id="type-pills">
+          <button class="pill active" data-type="all" onclick="setType(this)">All types</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="progress-wrap">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <!-- Log console -->
+    <div class="console-bar" id="console-bar">
+      <div class="console-inner" id="console-inner"></div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      <div class="results-meta">
+        <span id="results-label">No results yet — run a crawl to get started</span>
+        <span id="page-label"></span>
+      </div>
+      <div class="asset-grid" id="asset-grid">
+        <div class="empty">
+          <div class="empty-icon">🎮</div>
+          <div class="empty-title">Ready to crawl</div>
+          <div class="empty-sub">Configure settings and hit Start Crawl</div>
+        </div>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Crawl type filter ─────────────────────────────────────────────────────
+  const CRAWL_TYPES = [
+    {key: 'avatar base', icon: '🧍', label: 'Avatar Base'},
+    {key: 'avatar',      icon: '🧍', label: 'Avatar'},
+    {key: 'clothing',    icon: '👕', label: 'Clothing'},
+    {key: 'accessory',   icon: '🎀', label: 'Accessory'},
+    {key: 'hair',        icon: '💇', label: 'Hair'},
+    {key: 'shader',      icon: '✨', label: 'Shader'},
+    {key: 'animation',   icon: '🎬', label: 'Animation'},
+    {key: 'prefab',      icon: '📦', label: 'Prefab'},
+    {key: 'world asset', icon: '🌍', label: 'World Asset'},
+    {key: 'asset',       icon: '🗂', label: 'General'},
+  ];
+
+  let selectedTypes = new Set(CRAWL_TYPES.map(t => t.key)); // all on by default
+
+  function buildTypeGrid() {
+    document.getElementById('type-grid').innerHTML = CRAWL_TYPES.map(t =>
+      `<button class="type-toggle active" data-type="${t.key}" onclick="toggleCrawlType(this)" title="${t.label}">
+        ${t.icon} ${t.label}
+      </button>`
+    ).join('');
+    syncAllTypesBtn();
+  }
+
+  function toggleCrawlType(btn) {
+    const t = btn.dataset.type;
+    if (selectedTypes.has(t)) { selectedTypes.delete(t); btn.classList.remove('active'); }
+    else                       { selectedTypes.add(t);    btn.classList.add('active'); }
+    syncAllTypesBtn();
+  }
+
+  function toggleAllTypes() {
+    const allOn = selectedTypes.size === CRAWL_TYPES.length;
+    if (allOn) {
+      selectedTypes.clear();
+      document.querySelectorAll('.type-toggle').forEach(b => b.classList.remove('active'));
+    } else {
+      CRAWL_TYPES.forEach(t => selectedTypes.add(t.key));
+      document.querySelectorAll('.type-toggle').forEach(b => b.classList.add('active'));
+    }
+    syncAllTypesBtn();
+  }
+
+  function syncAllTypesBtn() {
+    const btn = document.getElementById('type-all-btn');
+    btn.textContent = selectedTypes.size === CRAWL_TYPES.length ? 'None' : 'All';
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let state = {
+    src: 'all', type: 'all', q: '',
+    sort: 'new_first', newOnly: false,
+    page: 1, total: 0, limit: 24,
+    knownTypes: new Set(),
+    crawlStatus: 'idle',
+  };
+
+  const TYPE_ICONS = {
+    'avatar base':'🧍','avatar':'🧍','clothing':'👕','hair':'💇',
+    'accessory':'🎀','shader':'✨','animation':'🎬','prefab':'📦',
+    'world asset':'🌍','asset':'🗂'
+  };
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', () => {
+    buildTypeGrid();
+    checkStatus();
+    checkPlaywright();
+  });
+
+  // Restore results after a page reload (the server keeps the last crawl in memory)
+  function checkStatus() {
+    fetch('/api/status').then(r => r.json()).then(d => {
+      setStatusUI(d.status);
+      if (d.asset_count > 0) loadAssets();
+    });
+  }
+
+  function checkPlaywright() {
+    fetch('/api/status').then(r => r.json()).then(d => {
+      const pill = document.getElementById('pw-pill');
+      const lbl  = document.getElementById('pw-label');
+      if (d.playwright_ok) {
+        pill.className = 'pw-pill ok';
+        lbl.textContent = 'Playwright ready';
+      } else {
+        pill.className = 'pw-pill off';
+        lbl.textContent = 'Playwright not found';
+      }
+    });
+  }
+
+  // ── Crawl ──────────────────────────────────────────────────────────────────
+  function startCrawl() {
+    if (window.innerWidth <= 768) closeSidebar();
+
+    const src   = document.getElementById('src-select').value;
+    const pages = parseInt(document.getElementById('pages-input').value) || 3;
+
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('console-bar').classList.add('open');
+    document.getElementById('console-inner').innerHTML = '';
+    setProgress(5);
+    setStatusUI('running');
+
+    // null = all types (no filter); otherwise send the selected subset
+    const types = selectedTypes.size === CRAWL_TYPES.length
+      ? null
+      : [...selectedTypes];
+
+    fetch('/api/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source: src, max_pages: pages, types})
+    }).then(r => r.json()).then(d => {
+      if (d.error) { alert(d.error); setStatusUI('idle'); return; }
+      listenStream();
+    });
+  }
+
+  // Follow crawl progress over Server-Sent Events. The server sends plain log lines
+  // plus control messages: 'connected', '__PING__' (keep-alive), and
+  // '__DONE__<count>' / '__ERROR__<msg>', which end the stream.
+  function listenStream() {
+    const es = new EventSource('/api/stream');
+    let msgCount = 0;
+
+    es.onmessage = e => {
+      const msg = e.data;
+      if (msg === 'connected' || msg === '__PING__') return;
+
+      if (msg.startsWith('__DONE__')) {
+        const count = parseInt(msg.replace('__DONE__', '')) || 0;
+        appendLog(`✓ Done — ${count} assets found`, 'done');
+        setProgress(100);
+        setStatusUI('done');
+        document.getElementById('run-btn').disabled = false;
+        enableExports(true);
+        loadAssets();
+        loadStats();
+        es.close();
+        return;
+      }
+      if (msg.startsWith('__ERROR__')) {
+        appendLog('✗ ' + msg.replace('__ERROR__', ''), 'error');
+        setStatusUI('error');
+        document.getElementById('run-btn').disabled = false;
+        es.close();
+        return;
+      }
+
+      // Total work is unknown up front, so the bar advances 2% per message and
+      // holds at 90% until __DONE__
+      msgCount++;
+      const cls = msg.includes('Playwright') ? 'pw' : '';
+      appendLog(msg, cls);
+      setProgress(Math.min(5 + msgCount * 2, 90));
+    };
+    es.onerror = () => { es.close(); setStatusUI('error'); document.getElementById('run-btn').disabled = false; };
+  }
+
+  // ── Assets ─────────────────────────────────────────────────────────────────
+  function loadAssets() {
+    const params = new URLSearchParams({
+      q: state.q, source: state.src, type: state.type,
+      sort: state.sort, new_only: state.newOnly,
+      page: state.page, limit: state.limit
+    });
+    fetch('/api/assets?' + params).then(r => r.json()).then(renderAssets);
+  }
+
+  function renderAssets(data) {
+    state.total = data.total;
+    const grid  = document.getElementById('asset-grid');
+    const label = document.getElementById('results-label');
+    const plbl  = document.getElementById('page-label');
+
+    label.innerHTML = `<strong>${data.total}</strong> assets found`;
+    const totalPages = Math.ceil(data.total / state.limit);
+    plbl.textContent = totalPages > 1 ? `Page ${state.page} of ${totalPages}` : '';
+
+    if (!data.assets.length) {
+      grid.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">No results</div><div class="empty-sub">Try adjusting your filters</div></div>`;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    grid.innerHTML = data.assets.map(a => {
+      const icon   = TYPE_ICONS[a.asset_type] || '🗂';
+      const isFree = ['free','$0.00','0','¥0'].includes((a.price||'').toLowerCase());
+      const newBadge = a.is_new ? `<span class="new-badge">NEW</span>` : '';
+      // Show the type icon if there's no image or the image fails to load
+      const thumb  = (a.image_url && a.image_url !== 'N/A')
+        ? `<img src="${a.image_url}" onerror="this.parentNode.innerHTML='<span>${icon}</span>'" loading="lazy">`
+        : `<span>${icon}</span>`;
+      const srcLabel = a.source === 'booth' ? 'booth.pm' : a.source;
+      return `
+        <div class="asset-card" onclick="window.open('${a.url}','_blank')">
+          <div class="asset-thumb">${thumb}</div>
+          <div class="asset-body">
+            <div class="asset-title" title="${a.title}">${a.title}${newBadge}</div>
+            <div class="asset-creator">${a.creator !== 'N/A' ? a.creator : '—'}</div>
+            <div class="type-pill">${icon} ${a.asset_type}</div>
+            <div class="asset-footer">
+              <span class="asset-price ${isFree?'free':''}">${isFree ? 'FREE' : a.price}</span>
+              <span class="src-tag ${a.source}">${srcLabel}</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    renderPagination(totalPages);
+    updateTypePills(data.assets);
+  }
+
+  // Page buttons: always first and last, plus ±2 around the current page;
+  // an ellipsis marks each gap
+  function renderPagination(totalPages) {
+    if (totalPages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+    let html = `<button class="page-btn" onclick="goPage(${state.page-1})" ${state.page<=1?'disabled':''}>← Prev</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || Math.abs(i - state.page) <= 2)
+        html += `<button class="page-btn ${i===state.page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+      else if (Math.abs(i - state.page) === 3)
+        html += `<span style="color:var(--muted);padding:0 4px;">…</span>`;
+    }
+    html += `<button class="page-btn" onclick="goPage(${state.page+1})" ${state.page>=totalPages?'disabled':''}>Next →</button>`;
+    document.getElementById('pagination').innerHTML = html;
+  }
+
+  function goPage(p) { state.page = p; loadAssets(); window.scrollTo(0,0); }
+
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  function loadStats() {
+    fetch('/api/stats').then(r => r.json()).then(d => {
+      document.getElementById('s-total').textContent   = d.total;
+      document.getElementById('s-jinxxy').textContent  = d.by_source.jinxxy  || 0;
+      document.getElementById('s-gumroad').textContent = d.by_source.gumroad || 0;
+      document.getElementById('s-booth').textContent   = d.by_source.booth   || 0;
+      document.getElementById('s-payhip').textContent  = d.by_source.payhip  || 0;
+      document.getElementById('s-free').textContent    = d.free;
+      document.getElementById('s-paid').textContent    = d.paid;
+      document.getElementById('s-new').textContent     = d.new  || 0;
+
+      const types = Object.entries(d.by_type).sort((a,b) => b[1]-a[1]).slice(0, 8);
+      document.getElementById('type-rows').innerHTML = types.map(([t,c]) =>
+        `<div class="stat-row"><span>${TYPE_ICONS[t]||'🗂'} ${t}</span><span class="stat-val">${c}</span></div>`
+      ).join('');
+
+      // Add filter pills for any types that aren't shown yet (existing pills are kept)
+      const pillsDiv = document.getElementById('type-pills');
+      const existing = new Set([...pillsDiv.querySelectorAll('[data-type]')].map(b => b.dataset.type));
+      Object.keys(d.by_type).forEach(t => {
+        if (!existing.has(t)) {
+          const btn = document.createElement('button');
+          btn.className = 'pill';
+          btn.dataset.type = t;
+          btn.textContent = (TYPE_ICONS[t]||'') + ' ' + t;
+          btn.onclick = () => setType(btn);
+          pillsDiv.appendChild(btn);
+        }
+      });
+    });
+  }
+
+  function updateTypePills(assets) {
+    const types = [...new Set(assets.map(a => a.asset_type))];
+    const pillsDiv = document.getElementById('type-pills');
+    const existing = new Set([...pillsDiv.querySelectorAll('[data-type]')].map(b => b.dataset.type));
+    types.forEach(t => {
+      if (!existing.has(t)) {
+        const btn = document.createElement('button');
+        btn.className = 'pill';
+        btn.dataset.type = t;
+        btn.textContent = (TYPE_ICONS[t]||'') + ' ' + t;
+        btn.onclick = () => setType(btn);
+        pillsDiv.appendChild(btn);
+      }
+    });
+  }
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  function setSrc(btn) {
+    state.src = btn.dataset.src; state.page = 1;
+    document.querySelectorAll('#src-pills .pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadAssets();
+  }
+  function setType(btn) {
+    state.type = btn.dataset.type; state.page = 1;
+    document.querySelectorAll('#type-pills .pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadAssets();
+  }
+
+  function toggleNewOnly(btn) {
+    state.newOnly = !state.newOnly;
+    state.page = 1;
+    btn.classList.toggle('active', state.newOnly);
+    loadAssets();
+  }
+
+  function onSortChange() {
+    state.sort = document.getElementById('sort-select').value;
+    state.page = 1;
+    loadAssets();
+  }
+
+  // Wait 250 ms after the last keystroke before querying, so typing doesn't send a request per key
+  let searchTimer;
+  function debouncedSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      state.q = document.getElementById('search').value;
+      state.page = 1;
+      loadAssets();
+    }, 250);
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  function setStatusUI(s) {
+    state.crawlStatus = s;
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    dot.className  = 'status-dot ' + s;
+    text.textContent = s;
+    if (s === 'idle' || s === 'done' || s === 'error') {
+      setTimeout(() => { document.getElementById('console-bar').classList.remove('open'); }, 3000);
+    }
+  }
+
+  function setProgress(pct) {
+    document.getElementById('progress-fill').style.width = pct + '%';
+    if (pct >= 100) setTimeout(() => document.getElementById('progress-fill').style.width = '0%', 1500);
+  }
+
+  function appendLog(msg, cls='') {
+    const div  = document.createElement('div');
+    div.className = 'log-line ' + cls;
+    div.textContent = '> ' + msg;
+    const inner = document.getElementById('console-inner');
+    inner.appendChild(div);
+    inner.scrollTop = inner.scrollHeight;
+  }
+
+  function enableExports(yes) {
+    document.getElementById('export-json').disabled = !yes;
+    document.getElementById('export-csv').disabled  = !yes;
+  }
+
+  function exportData(fmt) {
+    window.location.href = '/api/export/' + fmt;
+  }
+
+  // ── Sidebar drawer (mobile) ────────────────────────────────────────────────
+  function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('sidebar-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // Close drawer with Escape key
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+
+</script>
+</body>
+</html>

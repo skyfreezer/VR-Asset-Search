@@ -1,0 +1,4 @@
+# Normalize line endings so Windows and macOS/Linux contributors produce clean diffs
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
