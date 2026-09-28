@@ -1,6 +1,6 @@
 # VR Asset Search
 
-A self-hosted web app for finding VRChat avatars and Unity assets across popular creator marketplaces: **Jinxxy**, **Gumroad**, **Booth.pm**, and **Payhip**. It crawls public listing pages, normalizes the results into one searchable catalog, and highlights items that are new since your last run.
+A self-hosted web app for finding VRChat avatars and Unity assets across popular creator marketplaces: **Jinxxy**, **Gumroad**, **Booth.pm**, and **Payhip**. It crawls public listing pages, normalizes the results into one searchable catalog, highlights items that are new since your last run, and keeps a history of the assets you've opened.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Flask](https://img.shields.io/badge/flask-3.x-lightgrey)
@@ -31,6 +31,7 @@ A self-hosted web app for finding VRChat avatars and Unity assets across popular
 - **Asset type filtering.** Limit a crawl to avatar bases, avatars, clothing, accessories, hair, shaders, animations, prefabs, or world assets. The crawler only queries the marketplace categories and search terms that match your selection.
 - **"New since last run" tracking.** URLs are saved to `seen_urls.json` between runs, so items you haven't seen before are flagged as **New**.
 - **Live progress.** Crawl logs stream to the browser in real time over Server-Sent Events.
+- **Viewing history.** Every asset you open is saved to a local SQLite database (`vr_assets.db`). The **History** tab lists them with when you last opened each one and how many times, and results you've already opened are marked **Viewed**. History is kept across restarts and new crawls.
 - **Search, sort, and filter.** Search by title, creator, or tag. Filter by source, type, or new items only. Sort by newest, title, or price.
 - **Export.** Download results as JSON or CSV.
 - **Lightweight fetching.** Jinxxy, Gumroad, and Booth.pm are read from plain HTML with `requests`. Playwright (headless Chromium) is used only for Payhip, which renders its listings with JavaScript.
@@ -43,8 +44,9 @@ A self-hosted web app for finding VRChat avatars and Unity assets across popular
 ```
  Browser UI (templates/index.html)
         │  POST /api/start  ·  GET /api/stream (SSE)  ·  GET /api/assets
+        │  GET/POST/DELETE /api/history
         ▼
- Flask app (app.py, served by Waitress)
+ Flask app (app.py, served by Waitress)  ──►  db.py  ──►  vr_assets.db (SQLite: click history)
         │  runs the crawl in a background thread
         ▼
  Crawler (crawler.py)
@@ -202,7 +204,21 @@ When the crawl finishes, results appear as cards with thumbnail, title, creator,
 - Change the sort to **Price low–high** to find free assets first.
 - Check the sidebar **Stats** panel for totals by source, free vs. paid, and type.
 
-### 4. Export
+Clicking a card opens the product page in a new tab and adds it to your history. Cards you've opened before show a grey **VIEWED** badge.
+
+### 4. Revisit assets in the History tab
+
+Click **History** above the results grid. The number next to it is how many different assets you've opened.
+
+- Each card shows when you last opened it and how many times, for example `Viewed 2h ago · 3×`.
+- The search bar, source pills, and type pills filter your history the same way they filter results. **✦ New only** is hidden on this tab.
+- The sort menu changes to **Recently viewed** (default), **Most viewed**, **Title A–Z**, and **Price low–high / high–low**.
+- Click a card to open it again, which also updates its time and count.
+- Hover over a card and click **✕** to remove it from history, or click **Clear history** to delete everything (you'll be asked to confirm).
+
+History is saved as a copy of each asset at the moment you clicked it, so it still shows up after a server restart or after a new crawl that no longer finds that item. The sidebar **Stats** panel covers the current crawl results only, not history.
+
+### 5. Export
 
 Click **JSON** or **CSV** in the sidebar to download the full result set (`vrchat_assets.json` / `vrchat_assets.csv`).
 
@@ -224,6 +240,9 @@ curl "http://localhost:8081/api/assets?q=liltoon&sort=price_asc&limit=5"
 
 # Download everything as CSV
 curl -o assets.csv http://localhost:8081/api/export/csv
+
+# Your five most-viewed assets
+curl "http://localhost:8081/api/history?sort=most_clicked&limit=5"
 ```
 
 ---
@@ -240,6 +259,11 @@ curl -o assets.csv http://localhost:8081/api/export/csv
 | `GET`  | `/api/stats` | Summary counts by source, type, price, and new items |
 | `GET`  | `/api/export/json` | Download all results as JSON |
 | `GET`  | `/api/export/csv` | Download all results as CSV |
+| `GET`  | `/api/history` | Filtered, sorted, paginated click history |
+| `POST` | `/api/history` | Record a click on an asset |
+| `DELETE` | `/api/history` | Remove one history entry (`?url=...`) or clear all history |
+| `GET`  | `/api/history/urls` | Every URL in history (used for the **Viewed** badge) |
+| `GET`  | `/api/history/stats` | History totals, counts by source and type, most-viewed assets |
 
 ### `POST /api/start`
 
@@ -304,6 +328,54 @@ Response:
 }
 ```
 
+### `GET /api/history`
+
+Takes the same `q`, `source`, `type`, `page`, and `limit` parameters as `/api/assets`. `new_only` is not supported, and `sort` has different options:
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `sort` | `recent` | `recent` (last opened first), `most_clicked`, `title`, `price_asc`, `price_desc` |
+
+The response has the same shape as `/api/assets` (`assets`, `total`, `page`, `limit`). Each entry is a [history record](#history-records).
+
+### `POST /api/history`
+
+The body is an asset object as returned by `/api/assets`. Only `url` is required; the other fields are saved as a snapshot so the entry can be displayed later.
+
+```bash
+curl -X POST http://localhost:8081/api/history \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.gumroad.com/l/casual-hoodie", "title": "Casual Hoodie Outfit", "source": "gumroad", "price": "$12.00"}'
+```
+
+If the URL is already in history, its `last_clicked` time and `click_count` are updated and the snapshot fields are refreshed. Returns `400` if `url` is missing.
+
+### `DELETE /api/history`
+
+```bash
+# Remove one entry
+curl -X DELETE "http://localhost:8081/api/history?url=https://example.gumroad.com/l/casual-hoodie"
+
+# Clear all history
+curl -X DELETE http://localhost:8081/api/history
+```
+
+Returns `{"ok": true, "removed": <rows deleted>}`.
+
+### `GET /api/history/stats`
+
+```json
+{
+  "total": 42,
+  "total_clicks": 97,
+  "by_source": { "booth": 20, "gumroad": 12, "jinxxy": 10 },
+  "by_type":   { "clothing": 18, "shader": 9, "avatar base": 15 },
+  "most_clicked": [ { "...": "..." } ]
+}
+```
+
+`total` counts distinct assets; `total_clicks` counts every individual click.
+
 ---
 
 ## Data Model
@@ -342,6 +414,22 @@ Each result is a `VRChatAsset` record. Sample (illustrative values):
 
 `N/A` means the source didn't provide that value.
 
+### History records
+
+History is stored in `vr_assets.db` (SQLite, see [`db.py`](db.py)) in two tables:
+
+- **`history`**: one row per asset URL. It holds a copy of the asset's `title`, `creator`, `price`, `source`, `asset_type`, `image_url`, and `tags` from the last time it was clicked, plus:
+
+  | Field | Description |
+  |-------|-------------|
+  | `first_clicked` | UTC timestamp of the first click |
+  | `last_clicked` | UTC timestamp of the most recent click |
+  | `click_count` | Number of times the asset has been opened |
+
+- **`clicks`**: one row per individual click (`url`, `clicked_at`), for a full timeline. Rows are removed along with their `history` entry.
+
+`/api/history` returns the `history` fields above. Fields such as `is_new`, `rating`, and `description` are not stored.
+
 ---
 
 ## Project Structure
@@ -350,9 +438,11 @@ Each result is a `VRChatAsset` record. Sample (illustrative values):
 VR-Asset-Search/
 ├── app.py              # Flask app: REST API, SSE stream, export, Waitress entry point
 ├── crawler.py          # Marketplace crawlers, classifier, robots.txt, Playwright fallback
+├── db.py               # SQLite storage for click history
 ├── requirements.txt    # Python dependencies
 ├── seen_urls.json      # Generated: URLs from earlier runs (for "new" detection, git-ignored)
-├── .gitignore          # Keeps .venv, caches, exports, and seen_urls.json out of the repo
+├── vr_assets.db        # Generated: click history database (git-ignored, with -wal/-shm files)
+├── .gitignore          # Keeps .venv, caches, exports, seen_urls.json, and vr_assets.db out of the repo
 ├── .gitattributes      # Normalizes line endings across Windows and macOS/Linux
 ├── templates/
 │   └── index.html      # Single-page frontend (HTML/CSS/JS)
@@ -375,12 +465,15 @@ These settings are constants in the source:
 | Jinxxy categories | `crawler.py`, `JINXXY_MARKETS` | 7 market categories |
 | Type keywords | `crawler.py`, `ASSET_TYPE_KEYWORDS` | See source |
 | Seen-URL file | `crawler.py`, `_SEEN_FILE` | `seen_urls.json` next to `crawler.py` |
+| History database | `db.py`, `DB_FILE` | `vr_assets.db` next to `db.py` |
 
 **Reset "new" tracking:** delete `seen_urls.json`. On the next crawl, every item will be marked new.
 
+**Reset history:** click **Clear history** in the History tab, or stop the app and delete `vr_assets.db` (and `vr_assets.db-wal` / `vr_assets.db-shm` if present). The tables are recreated automatically on the next start.
+
 **Debug mode:** in `app.py`, comment out the `serve(...)` line and uncomment `app.run(debug=True, ...)` to use Flask's development server with auto-reload.
 
-> Results are kept in memory. Restarting the server clears the current result set, but `seen_urls.json` is kept.
+> Results are kept in memory. Restarting the server clears the current result set, but `seen_urls.json` and your history in `vr_assets.db` are kept.
 
 ---
 
