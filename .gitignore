@@ -14,6 +14,10 @@ env/
 # ── Runtime / generated data ──────────────────────────────────────────────
 # Personal crawl history used for "new since last run" — regenerated automatically
 seen_urls.json
+# Click history database (see db.py) and its SQLite WAL side files
+vr_assets.db
+vr_assets.db-wal
+vr_assets.db-shm
 # Exported results
 vrchat_assets.json
 vrchat_assets.csv

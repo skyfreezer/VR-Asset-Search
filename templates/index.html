@@ -343,6 +343,88 @@
   }
   .results-meta strong { color: var(--text); font-family: var(--mono); }
 
+  /* Results / History tabs */
+  .view-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .view-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    margin-bottom: -1px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .view-tab:hover { color: var(--text); }
+  .view-tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+  .tab-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 0 6px;
+    margin-left: 4px;
+  }
+  .meta-right { display: flex; align-items: center; gap: 10px; }
+  .clear-history-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: var(--mono);
+    cursor: pointer;
+  }
+  .clear-history-btn:hover { border-color: var(--gumroad); color: var(--gumroad); }
+
+  /* Already-clicked marker on result cards, and per-card history details */
+  .viewed-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-family: var(--mono);
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--bg3);
+    color: var(--muted);
+    border: 1px solid var(--border2);
+    margin-left: 4px;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+  }
+  .asset-card.viewed .asset-thumb img { opacity: 0.7; }
+  .asset-card { position: relative; }
+  .history-meta { font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
+  .remove-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1px solid var(--border2);
+    background: #000000b0;
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .asset-card:hover .remove-btn { opacity: 1; }
+  .remove-btn:hover { border-color: var(--gumroad); color: var(--gumroad); }
+  @media (hover: none) { .remove-btn { opacity: 1; } }
+
   .asset-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -711,9 +793,16 @@
 
     <!-- Content -->
     <div class="content">
+      <div class="view-tabs">
+        <button class="view-tab active" data-view="results" onclick="setView('results')">Results</button>
+        <button class="view-tab" data-view="history" onclick="setView('history')">History<span class="tab-count" id="history-count">0</span></button>
+      </div>
       <div class="results-meta">
         <span id="results-label">No results yet — run a crawl to get started</span>
-        <span id="page-label"></span>
+        <span class="meta-right">
+          <span id="page-label"></span>
+          <button class="clear-history-btn" id="clear-history-btn" onclick="clearHistory()" style="display:none">Clear history</button>
+        </span>
       </div>
       <div class="asset-grid" id="asset-grid">
         <div class="empty">
@@ -784,6 +873,17 @@
     page: 1, total: 0, limit: 24,
     knownTypes: new Set(),
     crawlStatus: 'idle',
+    view: 'results',          // 'results' | 'history'
+    histSort: 'recent',       // history has its own sort options (see SORT_OPTIONS)
+    currentAssets: [],        // assets on screen, indexed by the card onclick handlers
+    viewedUrls: new Set(),    // every URL in click history, for the "Viewed" badge
+  };
+
+  const SORT_OPTIONS = {
+    results: [['new_first','New first'], ['title','Title A–Z'],
+              ['price_asc','Price low–high'], ['price_desc','Price high–low']],
+    history: [['recent','Recently viewed'], ['most_clicked','Most viewed'],
+              ['title','Title A–Z'], ['price_asc','Price low–high'], ['price_desc','Price high–low']],
   };
 
   const TYPE_ICONS = {
@@ -797,6 +897,7 @@
     buildTypeGrid();
     checkStatus();
     checkPlaywright();
+    loadHistoryUrls();
   });
 
   // Restore results after a page reload (the server keeps the last crawl in memory)
@@ -891,7 +992,9 @@
   }
 
   // ── Assets ─────────────────────────────────────────────────────────────────
+  // Filters, search and pagination all call this; it loads whichever tab is showing
   function loadAssets() {
+    if (state.view === 'history') return loadHistory();
     const params = new URLSearchParams({
       q: state.q, source: state.src, type: state.type,
       sort: state.sort, new_only: state.newOnly,
@@ -902,46 +1005,170 @@
 
   function renderAssets(data) {
     state.total = data.total;
+    state.currentAssets = data.assets;
     const grid  = document.getElementById('asset-grid');
     const label = document.getElementById('results-label');
     const plbl  = document.getElementById('page-label');
+    const isHistory = state.view === 'history';
 
-    label.innerHTML = `<strong>${data.total}</strong> assets found`;
+    label.innerHTML = isHistory
+      ? `<strong>${data.total}</strong> viewed assets`
+      : `<strong>${data.total}</strong> assets found`;
     const totalPages = Math.ceil(data.total / state.limit);
     plbl.textContent = totalPages > 1 ? `Page ${state.page} of ${totalPages}` : '';
 
     if (!data.assets.length) {
-      grid.innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><div class="empty-title">No results</div><div class="empty-sub">Try adjusting your filters</div></div>`;
+      const filtered = state.q || state.src !== 'all' || state.type !== 'all' || (!isHistory && state.newOnly);
+      let icon = '🔍', title = 'No results', sub = 'Try adjusting your filters';
+      if (isHistory && !filtered) {
+        icon = '🕘'; title = 'No history yet'; sub = 'Assets you open will show up here';
+      } else if (!isHistory && !filtered && state.crawlStatus === 'idle') {
+        icon = '🎮'; title = 'Ready to crawl'; sub = 'Configure settings and hit Start Crawl';
+        label.textContent = 'No results yet — run a crawl to get started';
+      }
+      grid.innerHTML = `<div class="empty"><div class="empty-icon">${icon}</div><div class="empty-title">${title}</div><div class="empty-sub">${sub}</div></div>`;
       document.getElementById('pagination').innerHTML = '';
       return;
     }
 
-    grid.innerHTML = data.assets.map(a => {
-      const icon   = TYPE_ICONS[a.asset_type] || '🗂';
-      const isFree = ['free','$0.00','0','¥0'].includes((a.price||'').toLowerCase());
-      const newBadge = a.is_new ? `<span class="new-badge">NEW</span>` : '';
-      // Show the type icon if there's no image or the image fails to load
-      const thumb  = (a.image_url && a.image_url !== 'N/A')
-        ? `<img src="${a.image_url}" onerror="this.parentNode.innerHTML='<span>${icon}</span>'" loading="lazy">`
-        : `<span>${icon}</span>`;
-      const srcLabel = a.source === 'booth' ? 'booth.pm' : a.source;
-      return `
-        <div class="asset-card" onclick="window.open('${a.url}','_blank')">
-          <div class="asset-thumb">${thumb}</div>
-          <div class="asset-body">
-            <div class="asset-title" title="${a.title}">${a.title}${newBadge}</div>
-            <div class="asset-creator">${a.creator !== 'N/A' ? a.creator : '—'}</div>
-            <div class="type-pill">${icon} ${a.asset_type}</div>
-            <div class="asset-footer">
-              <span class="asset-price ${isFree?'free':''}">${isFree ? 'FREE' : a.price}</span>
-              <span class="src-tag ${a.source}">${srcLabel}</span>
-            </div>
-          </div>
-        </div>`;
-    }).join('');
+    grid.innerHTML = data.assets.map((a, i) => renderCard(a, i, isHistory)).join('');
 
     renderPagination(totalPages);
     updateTypePills(data.assets);
+  }
+
+  // One card, shared by both tabs. `i` indexes state.currentAssets.
+  function renderCard(a, i, isHistory) {
+    const icon   = TYPE_ICONS[a.asset_type] || '🗂';
+    const isFree = ['free','$0.00','0','¥0'].includes((a.price||'').toLowerCase());
+    const newBadge = (!isHistory && a.is_new) ? `<span class="new-badge">NEW</span>` : '';
+    const viewed   = !isHistory && state.viewedUrls.has(a.url);
+    const viewedBadge = viewed ? `<span class="viewed-badge">VIEWED</span>` : '';
+    // Show the type icon if there's no image or the image fails to load
+    const thumb  = (a.image_url && a.image_url !== 'N/A')
+      ? `<img src="${esc(a.image_url)}" onerror="this.parentNode.innerHTML='<span>${icon}</span>'" loading="lazy">`
+      : `<span>${icon}</span>`;
+    const srcLabel = a.source === 'booth' ? 'booth.pm' : a.source;
+    const historyMeta = isHistory
+      ? `<div class="history-meta">Viewed ${timeAgo(a.last_clicked)}${a.click_count > 1 ? ` · ${a.click_count}×` : ''}</div>`
+      : '';
+    const removeBtn = isHistory
+      ? `<button class="remove-btn" title="Remove from history" onclick="event.stopPropagation(); removeHistory(${i})">✕</button>`
+      : '';
+    return `
+      <div class="asset-card ${viewed ? 'viewed' : ''}" onclick="openAsset(${i})">
+        ${removeBtn}
+        <div class="asset-thumb">${thumb}</div>
+        <div class="asset-body">
+          <div class="asset-title" title="${esc(a.title)}">${esc(a.title)}${newBadge}${viewedBadge}</div>
+          <div class="asset-creator">${a.creator && a.creator !== 'N/A' ? esc(a.creator) : '—'}</div>
+          <div class="type-pill">${icon} ${esc(a.asset_type)}</div>
+          <div class="asset-footer">
+            <span class="asset-price ${isFree?'free':''}">${isFree ? 'FREE' : esc(a.price)}</span>
+            <span class="src-tag ${esc(a.source)}">${esc(srcLabel)}</span>
+          </div>
+          ${historyMeta}
+        </div>
+      </div>`;
+  }
+
+  // ── History ────────────────────────────────────────────────────────────────
+  function loadHistory() {
+    const params = new URLSearchParams({
+      q: state.q, source: state.src, type: state.type,
+      sort: state.histSort, page: state.page, limit: state.limit
+    });
+    fetch('/api/history?' + params).then(r => r.json()).then(d => {
+      renderAssets(d);
+      // Refresh the tab badge from the unfiltered count when no filters are applied
+      if (!state.q && state.src === 'all' && state.type === 'all') setHistoryCount(d.total);
+    });
+  }
+
+  function loadHistoryUrls() {
+    fetch('/api/history/urls').then(r => r.json()).then(d => {
+      state.viewedUrls = new Set(d.urls);
+      setHistoryCount(d.urls.length);
+    });
+  }
+
+  function setHistoryCount(n) {
+    document.getElementById('history-count').textContent = n;
+  }
+
+  // Open the asset in a new tab and record the click. window.open runs first,
+  // synchronously, so popup blockers treat it as a user action; keepalive lets
+  // the POST finish even while focus moves to the new tab.
+  function openAsset(i) {
+    const a = state.currentAssets[i];
+    if (!a) return;
+    window.open(a.url, '_blank', 'noopener');
+    fetch('/api/history', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(a),
+      keepalive: true,
+    }).then(() => {
+      if (!state.viewedUrls.has(a.url)) {
+        state.viewedUrls.add(a.url);
+        setHistoryCount(state.viewedUrls.size);
+      }
+      loadAssets();  // show the VIEWED badge / updated count and timestamp
+    });
+  }
+
+  function removeHistory(i) {
+    const a = state.currentAssets[i];
+    if (!a) return;
+    fetch('/api/history?' + new URLSearchParams({url: a.url}), {method: 'DELETE'}).then(() => {
+      state.viewedUrls.delete(a.url);
+      setHistoryCount(state.viewedUrls.size);
+      // Step back a page if this removed the last card on it
+      if (state.currentAssets.length === 1 && state.page > 1) state.page--;
+      loadHistory();
+    });
+  }
+
+  function clearHistory() {
+    if (!confirm('Clear all viewing history? This cannot be undone.')) return;
+    fetch('/api/history', {method: 'DELETE'}).then(() => {
+      state.viewedUrls = new Set();
+      setHistoryCount(0);
+      state.page = 1;
+      loadHistory();
+    });
+  }
+
+  function setView(view) {
+    if (view === state.view) return;
+    state.view = view;
+    state.page = 1;
+    document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    const isHistory = view === 'history';
+    // "New only" applies only to results; Clear history only to history
+    document.getElementById('new-only-btn').style.display = isHistory ? 'none' : '';
+    document.getElementById('clear-history-btn').style.display = isHistory ? '' : 'none';
+    const sel = document.getElementById('sort-select');
+    sel.innerHTML = SORT_OPTIONS[view].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    sel.value = isHistory ? state.histSort : state.sort;
+    loadAssets();
+  }
+
+  // "2026-09-28T14:03:00+00:00" -> "5m ago" / "3h ago" / "2d ago" / a date
+  function timeAgo(iso) {
+    const secs = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (isNaN(secs)) return '';
+    if (secs < 60)     return 'just now';
+    if (secs < 3600)   return Math.floor(secs / 60) + 'm ago';
+    if (secs < 86400)  return Math.floor(secs / 3600) + 'h ago';
+    if (secs < 604800) return Math.floor(secs / 86400) + 'd ago';
+    return new Date(iso).toLocaleDateString();
+  }
+
+  // Escape scraped text before putting it in HTML (titles can contain < " & etc.)
+  function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
   // Page buttons: always first and last, plus ±2 around the current page;
@@ -1032,7 +1259,8 @@
   }
 
   function onSortChange() {
-    state.sort = document.getElementById('sort-select').value;
+    const v = document.getElementById('sort-select').value;
+    if (state.view === 'history') state.histSort = v; else state.sort = v;
     state.page = 1;
     loadAssets();
   }

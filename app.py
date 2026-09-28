@@ -13,12 +13,15 @@ import time
 from flask import (Flask, render_template, request, jsonify,
                    Response, stream_with_context, send_file)
 from crawler import run_crawl, _check_playwright
+import db
 from waitress import serve
 
 app = Flask(__name__)
+db.init_db()  # create history tables on first run
 
 # In-memory store for the most recent crawl results.
-# Everything here is lost on restart; only seen_urls.json persists (see crawler.py).
+# Everything here is lost on restart; seen_urls.json (see crawler.py) and the
+# click history in vr_assets.db (see db.py) persist.
 _store: dict = {
     "assets": [],
     "status": "idle",   # idle | running | done | error
@@ -228,6 +231,52 @@ def api_export(fmt: str):
                          download_name="vrchat_assets.csv")
 
     return jsonify({"error": "Unknown format"}), 400
+
+
+# ── Click history (persisted in SQLite, see db.py) ──────────────────────────
+
+@app.route("/api/history", methods=["GET"])
+def api_history():
+    """Paginated click history. Same query params as /api/assets, except sort:
+    recent | most_clicked | title | price_asc | price_desc."""
+    page  = max(1, int(request.args.get("page", 1)))
+    limit = min(50, int(request.args.get("limit", 24)))
+    rows, total = db.get_history(
+        q=request.args.get("q", "").strip(),
+        source=request.args.get("source", "all"),
+        asset_type=request.args.get("type", "all"),
+        sort=request.args.get("sort", "recent"),
+        page=page, limit=limit,
+    )
+    return jsonify({"assets": rows, "total": total, "page": page, "limit": limit})
+
+
+@app.route("/api/history", methods=["POST"])
+def api_history_add():
+    """Record a click. Body: the asset dict as returned by /api/assets."""
+    asset = request.get_json(silent=True) or {}
+    if not asset.get("url"):
+        return jsonify({"error": "url is required"}), 400
+    db.record_click(asset, _price_sort_key(asset))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/history", methods=["DELETE"])
+def api_history_delete():
+    """Remove one entry (?url=...) or, with no url, clear all history."""
+    removed = db.delete_history(request.args.get("url") or None)
+    return jsonify({"ok": True, "removed": removed})
+
+
+@app.route("/api/history/urls")
+def api_history_urls():
+    """Every clicked URL, so the UI can mark already-viewed results."""
+    return jsonify({"urls": db.get_history_urls()})
+
+
+@app.route("/api/history/stats")
+def api_history_stats():
+    return jsonify(db.history_stats())
 
 
 if __name__ == "__main__":
