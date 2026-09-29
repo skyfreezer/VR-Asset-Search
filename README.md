@@ -1,6 +1,6 @@
 # VR Asset Search
 
-A self-hosted web app for finding VRChat avatars and Unity assets across popular creator marketplaces: **Jinxxy**, **Gumroad**, **Booth.pm**, and **Payhip**. It crawls public listing pages, normalizes the results into one searchable catalog, highlights items that are new since your last run, and keeps a history of the assets you've opened.
+A self-hosted web app for finding VRChat avatars and Unity assets across popular creator marketplaces: **Jinxxy**, **Gumroad**, **Booth.pm**, and **Payhip**. It crawls public listing pages, normalizes the results into one searchable catalog, highlights items that are new since your last run, keeps a history of the assets you've opened, and lets you save assets to favorites and named lists.
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Flask](https://img.shields.io/badge/flask-3.x-lightgrey)
@@ -32,6 +32,7 @@ A self-hosted web app for finding VRChat avatars and Unity assets across popular
 - **"New since last run" tracking.** URLs are saved to `seen_urls.json` between runs, so items you haven't seen before are flagged as **New**.
 - **Live progress.** Crawl logs stream to the browser in real time over Server-Sent Events.
 - **Viewing history.** Every asset you open is saved to a local SQLite database (`vr_assets.db`). The **History** tab lists them with when you last opened each one and how many times, and results you've already opened are marked **Viewed**. History is kept across restarts and new crawls.
+- **Favorites and named lists.** Click ♡ on any card to favorite it, or ＋ to add it to one or more named lists (for example "Shader ideas" or "Outfits to buy"). The **Favorites** and **Lists** tabs work like History, and they're stored in the same database, separately from history.
 - **Search, sort, and filter.** Search by title, creator, or tag. Filter by source, type, or new items only. Sort by newest, title, or price.
 - **Export.** Download results as JSON or CSV.
 - **Lightweight fetching.** Jinxxy, Gumroad, and Booth.pm are read from plain HTML with `requests`. Playwright (headless Chromium) is used only for Payhip, which renders its listings with JavaScript.
@@ -44,9 +45,9 @@ A self-hosted web app for finding VRChat avatars and Unity assets across popular
 ```
  Browser UI (templates/index.html)
         │  POST /api/start  ·  GET /api/stream (SSE)  ·  GET /api/assets
-        │  GET/POST/DELETE /api/history
+        │  /api/history  ·  /api/favorites  ·  /api/lists
         ▼
- Flask app (app.py, served by Waitress)  ──►  db.py  ──►  vr_assets.db (SQLite: click history)
+ Flask app (app.py, served by Waitress)  ──►  db.py  ──►  vr_assets.db (SQLite: history, favorites, lists)
         │  runs the crawl in a background thread
         ▼
  Crawler (crawler.py)
@@ -218,7 +219,26 @@ Click **History** above the results grid. The number next to it is how many diff
 
 History is saved as a copy of each asset at the moment you clicked it, so it still shows up after a server restart or after a new crawl that no longer finds that item. The sidebar **Stats** panel covers the current crawl results only, not history.
 
-### 5. Export
+### 5. Save favorites and lists
+
+Every card, on every tab, has two buttons in its top-left corner (shown on hover, and always shown once the item is saved):
+
+- **♡ / ♥** adds or removes the asset from **Favorites**.
+- **＋** opens a menu of your lists. Tick a list to add the asset, untick it to remove it, or type a name under **New list…** and press **Add** to create a list and add the asset in one step. The ＋ stays highlighted while the asset is in at least one list.
+
+The **Favorites** tab shows everything you've favorited. Click ♥ on a card there to remove it.
+
+The **Lists** tab shows one list at a time:
+
+- Pick a list from the menu next to the page count. It shows each list's item count and opens on the list you changed most recently.
+- **＋ New** creates an empty list. **Rename** and **Delete** act on the list that's showing. Deleting a list doesn't remove its assets from history or favorites.
+- Hover over a card and click **✕** in its top-right corner to remove it from the list. You can also untick the list in the card's **＋** menu.
+
+On both tabs, search, source, and type filters work as they do on History, and you can sort by **Recently added**, **Title A–Z**, or **Price low–high / high–low**. Opening a card from either tab also records it in History.
+
+List names must be unique, ignoring case, and can be up to 60 characters. Like history, favorites and lists keep their own copy of each asset, so they survive restarts, new crawls, and **Clear history**.
+
+### 6. Export
 
 Click **JSON** or **CSV** in the sidebar to download the full result set (`vrchat_assets.json` / `vrchat_assets.csv`).
 
@@ -243,6 +263,13 @@ curl -o assets.csv http://localhost:8081/api/export/csv
 
 # Your five most-viewed assets
 curl "http://localhost:8081/api/history?sort=most_clicked&limit=5"
+
+# Make a list and add an asset to it (the create call returns the list's id)
+curl -X POST http://localhost:8081/api/lists \
+     -H "Content-Type: application/json" -d '{"name": "Shader ideas"}'
+curl -X POST http://localhost:8081/api/lists/1/items \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://example.gumroad.com/l/toon-shader", "title": "Toon Shader"}'
 ```
 
 ---
@@ -264,6 +291,18 @@ curl "http://localhost:8081/api/history?sort=most_clicked&limit=5"
 | `DELETE` | `/api/history` | Remove one history entry (`?url=...`) or clear all history |
 | `GET`  | `/api/history/urls` | Every URL in history (used for the **Viewed** badge) |
 | `GET`  | `/api/history/stats` | History totals, counts by source and type, most-viewed assets |
+| `GET`  | `/api/favorites` | Filtered, sorted, paginated favorites |
+| `POST` | `/api/favorites` | Favorite an asset |
+| `DELETE` | `/api/favorites?url=...` | Unfavorite an asset |
+| `GET`  | `/api/favorites/urls` | Every favorited URL (used for the ♥ state) |
+| `GET`  | `/api/lists` | All lists with their item counts |
+| `POST` | `/api/lists` | Create a list |
+| `PATCH` | `/api/lists/<id>` | Rename a list |
+| `DELETE` | `/api/lists/<id>` | Delete a list and its items |
+| `GET`  | `/api/lists/<id>/items` | Filtered, sorted, paginated items in one list |
+| `POST` | `/api/lists/<id>/items` | Add an asset to a list |
+| `DELETE` | `/api/lists/<id>/items?url=...` | Remove an asset from a list |
+| `GET`  | `/api/lists/memberships` | `{url: [list ids]}` for every listed asset (used for the ＋ state) |
 
 ### `POST /api/start`
 
@@ -376,6 +415,40 @@ Returns `{"ok": true, "removed": <rows deleted>}`.
 
 `total` counts distinct assets; `total_clicks` counts every individual click.
 
+### Favorites and list items
+
+`GET /api/favorites` and `GET /api/lists/<id>/items` take the same `q`, `source`, `type`, `page`, and `limit` parameters as `/api/history`, and return the same response shape. Their `sort` options are:
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `sort` | `added` | `added` (most recently added first), `title`, `price_asc`, `price_desc` |
+
+`POST /api/favorites` and `POST /api/lists/<id>/items` take an asset object, as `POST /api/history` does. Only `url` is required. Saving an asset that's already saved refreshes its snapshot and keeps its original `added_at`. The matching `DELETE` calls need `?url=...` (there's no "clear all").
+
+### `POST /api/lists` and `PATCH /api/lists/<id>`
+
+```json
+{ "name": "Shader ideas" }
+```
+
+Both return the list:
+
+```json
+{
+  "ok": true,
+  "list": { "id": 1, "name": "Shader ideas", "count": 0,
+            "created_at": "2026-09-29T14:03:11+00:00", "updated_at": "2026-09-29T14:03:11+00:00" }
+}
+```
+
+| Status | When |
+|--------|------|
+| `400` | `name` is missing, blank, or longer than 60 characters |
+| `404` | No list with that id (also returned by the `/items` routes) |
+| `409` | Another list already has that name, ignoring case |
+
+`GET /api/lists` returns `{"lists": [...]}` in alphabetical order, each shaped like the `list` object above.
+
 ---
 
 ## Data Model
@@ -430,6 +503,16 @@ History is stored in `vr_assets.db` (SQLite, see [`db.py`](db.py)) in two tables
 
 `/api/history` returns the `history` fields above. Fields such as `is_new`, `rating`, and `description` are not stored.
 
+### Favorites and list records
+
+Three more tables are in the same database:
+
+- **`favorites`**: one row per favorited URL, holding the same asset snapshot as `history`, plus `added_at`.
+- **`lists`**: one row per list (`id`, `name`, `created_at`, `updated_at`). `name` is unique, ignoring case.
+- **`list_items`**: one row per asset per list (`list_id`, `url`, the asset snapshot, `added_at`). Deleting a list deletes its rows.
+
+Each table keeps its own snapshot, so **Clear history** doesn't affect favorites or lists.
+
 ---
 
 ## Project Structure
@@ -438,10 +521,10 @@ History is stored in `vr_assets.db` (SQLite, see [`db.py`](db.py)) in two tables
 VR-Asset-Search/
 ├── app.py              # Flask app: REST API, SSE stream, export, Waitress entry point
 ├── crawler.py          # Marketplace crawlers, classifier, robots.txt, Playwright fallback
-├── db.py               # SQLite storage for click history
+├── db.py               # SQLite storage for click history, favorites, and lists
 ├── requirements.txt    # Python dependencies
 ├── seen_urls.json      # Generated: URLs from earlier runs (for "new" detection, git-ignored)
-├── vr_assets.db        # Generated: click history database (git-ignored, with -wal/-shm files)
+├── vr_assets.db        # Generated: history, favorites, and lists database (git-ignored, with -wal/-shm files)
 ├── .gitignore          # Keeps .venv, caches, exports, seen_urls.json, and vr_assets.db out of the repo
 ├── .gitattributes      # Normalizes line endings across Windows and macOS/Linux
 ├── templates/
@@ -465,15 +548,20 @@ These settings are constants in the source:
 | Jinxxy categories | `crawler.py`, `JINXXY_MARKETS` | 7 market categories |
 | Type keywords | `crawler.py`, `ASSET_TYPE_KEYWORDS` | See source |
 | Seen-URL file | `crawler.py`, `_SEEN_FILE` | `seen_urls.json` next to `crawler.py` |
-| History database | `db.py`, `DB_FILE` | `vr_assets.db` next to `db.py` |
+| Database file | `db.py`, `DB_FILE` | `vr_assets.db` next to `db.py` |
+| Max list name length | `app.py`, `_MAX_LIST_NAME` | `60` |
 
 **Reset "new" tracking:** delete `seen_urls.json`. On the next crawl, every item will be marked new.
 
-**Reset history:** click **Clear history** in the History tab, or stop the app and delete `vr_assets.db` (and `vr_assets.db-wal` / `vr_assets.db-shm` if present). The tables are recreated automatically on the next start.
+**Reset history:** click **Clear history** in the History tab. Favorites and lists are kept.
+
+**Reset everything:** stop the app and delete `vr_assets.db` (and `vr_assets.db-wal` / `vr_assets.db-shm` if present). This removes history, favorites, and lists. The tables are recreated automatically on the next start.
+
+**Upgrading:** an existing `vr_assets.db` gets the new favorites and list tables automatically on the next start. Your history is kept.
 
 **Debug mode:** in `app.py`, comment out the `serve(...)` line and uncomment `app.run(debug=True, ...)` to use Flask's development server with auto-reload.
 
-> Results are kept in memory. Restarting the server clears the current result set, but `seen_urls.json` and your history in `vr_assets.db` are kept.
+> Results are kept in memory. Restarting the server clears the current result set, but `seen_urls.json` and your history, favorites, and lists in `vr_assets.db` are kept.
 
 ---
 

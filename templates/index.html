@@ -374,8 +374,8 @@
     padding: 0 6px;
     margin-left: 4px;
   }
-  .meta-right { display: flex; align-items: center; gap: 10px; }
-  .clear-history-btn {
+  .meta-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .clear-history-btn, .meta-btn {
     background: var(--bg3);
     border: 1px solid var(--border2);
     color: var(--muted);
@@ -385,7 +385,101 @@
     font-family: var(--mono);
     cursor: pointer;
   }
-  .clear-history-btn:hover { border-color: var(--gumroad); color: var(--gumroad); }
+  .clear-history-btn:hover, .meta-btn.danger:hover { border-color: var(--gumroad); color: var(--gumroad); }
+  .meta-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* List picker on the Lists tab */
+  .list-controls { display: flex; align-items: center; gap: 6px; }
+  .list-controls select {
+    width: auto;
+    max-width: 220px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  /* ♥ / ＋ buttons on every card (top-left; the ✕ remove button is top-right) */
+  .card-actions {
+    position: absolute;
+    z-index: 2;   /* the faded thumbnail on viewed cards would otherwise paint on top */
+    top: 6px;
+    left: 6px;
+    display: flex;
+    gap: 4px;
+  }
+  .card-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border2);
+    background: #000000b0;
+    color: var(--text);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  /* Stay visible when on, so saved items are recognisable without hovering */
+  .asset-card:hover .card-btn, .card-btn.on { opacity: 1; }
+  .fav-btn:hover, .fav-btn.on   { border-color: var(--gumroad); color: var(--gumroad); }
+  .list-btn:hover, .list-btn.on { border-color: var(--accent);  color: var(--accent2); }
+  @media (hover: none) { .card-btn { opacity: 1; } }
+
+  /* "Add to list" popover, opened from a card's ＋ button */
+  .list-popover {
+    display: none;
+    position: fixed;
+    z-index: 60;
+    width: 230px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  }
+  .list-popover.open { display: block; }
+  .list-popover-title {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 6px 6px;
+  }
+  .list-options { max-height: 220px; overflow-y: auto; }
+  .list-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .list-option:hover { background: var(--bg3); }
+  .list-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .list-option input { accent-color: var(--accent); flex-shrink: 0; }
+  .list-options .list-empty { font-size: 12px; color: var(--muted); padding: 4px 6px; }
+  .list-popover-new {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .list-popover-new input {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-family: var(--sans);
+    font-size: 12px;
+    outline: none;
+  }
 
   /* Already-clicked marker on result cards, and per-card history details */
   .viewed-badge {
@@ -407,6 +501,7 @@
   .history-meta { font-size: 10px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
   .remove-btn {
     position: absolute;
+    z-index: 2;
     top: 6px;
     right: 6px;
     width: 24px;
@@ -796,11 +891,19 @@
       <div class="view-tabs">
         <button class="view-tab active" data-view="results" onclick="setView('results')">Results</button>
         <button class="view-tab" data-view="history" onclick="setView('history')">History<span class="tab-count" id="history-count">0</span></button>
+        <button class="view-tab" data-view="favorites" onclick="setView('favorites')">Favorites<span class="tab-count" id="favorites-count">0</span></button>
+        <button class="view-tab" data-view="lists" onclick="setView('lists')">Lists<span class="tab-count" id="lists-count">0</span></button>
       </div>
       <div class="results-meta">
         <span id="results-label">No results yet — run a crawl to get started</span>
         <span class="meta-right">
           <span id="page-label"></span>
+          <span class="list-controls" id="list-controls" style="display:none">
+            <select id="list-select" onchange="selectList(this.value)"></select>
+            <button class="meta-btn" onclick="newList()">＋ New</button>
+            <button class="meta-btn" id="rename-list-btn" onclick="renameList()">Rename</button>
+            <button class="meta-btn danger" id="delete-list-btn" onclick="deleteList()">Delete</button>
+          </span>
           <button class="clear-history-btn" id="clear-history-btn" onclick="clearHistory()" style="display:none">Clear history</button>
         </span>
       </div>
@@ -813,6 +916,17 @@
       </div>
       <div class="pagination" id="pagination"></div>
     </div>
+  </div>
+</div>
+
+<!-- "Add to list" popover, positioned next to the card's ＋ button -->
+<div class="list-popover" id="list-popover">
+  <div class="list-popover-title">Add to list</div>
+  <div class="list-options" id="list-options"></div>
+  <div class="list-popover-new">
+    <input id="new-list-input" placeholder="New list…" maxlength="60"
+           onkeydown="if (event.key === 'Enter') addToNewList()">
+    <button class="meta-btn" onclick="addToNewList()">Add</button>
   </div>
 </div>
 
@@ -869,22 +983,33 @@
   // ── State ──────────────────────────────────────────────────────────────────
   let state = {
     src: 'all', type: 'all', q: '',
-    sort: 'new_first', newOnly: false,
+    newOnly: false,
     page: 1, total: 0, limit: 24,
     knownTypes: new Set(),
     crawlStatus: 'idle',
-    view: 'results',          // 'results' | 'history'
-    histSort: 'recent',       // history has its own sort options (see SORT_OPTIONS)
+    view: 'results',          // 'results' | 'history' | 'favorites' | 'lists'
+    // Each tab keeps its own sort (options in SORT_OPTIONS)
+    sorts: {results: 'new_first', history: 'recent', favorites: 'added', lists: 'added'},
     currentAssets: [],        // assets on screen, indexed by the card onclick handlers
     viewedUrls: new Set(),    // every URL in click history, for the "Viewed" badge
+    favUrls: new Set(),       // every favorited URL, for the ♥ button state
+    lists: [],                // [{id, name, count, ...}] from /api/lists
+    listId: null,             // the list shown on the Lists tab
+    memberships: {},          // url -> [list ids], for the ＋ button and popover checkboxes
   };
 
+  const SAVED_SORTS = [['added','Recently added'], ['title','Title A–Z'],
+                       ['price_asc','Price low–high'], ['price_desc','Price high–low']];
   const SORT_OPTIONS = {
     results: [['new_first','New first'], ['title','Title A–Z'],
               ['price_asc','Price low–high'], ['price_desc','Price high–low']],
     history: [['recent','Recently viewed'], ['most_clicked','Most viewed'],
               ['title','Title A–Z'], ['price_asc','Price low–high'], ['price_desc','Price high–low']],
+    favorites: SAVED_SORTS,
+    lists:     SAVED_SORTS,
   };
+
+  const JSON_HEADERS = {'Content-Type': 'application/json'};
 
   const TYPE_ICONS = {
     'avatar base':'🧍','avatar':'🧍','clothing':'👕','hair':'💇',
@@ -898,6 +1023,9 @@
     checkStatus();
     checkPlaywright();
     loadHistoryUrls();
+    loadFavoriteUrls();
+    loadLists();
+    loadMemberships();
   });
 
   // Restore results after a page reload (the server keeps the last crawl in memory)
@@ -994,14 +1122,33 @@
   // ── Assets ─────────────────────────────────────────────────────────────────
   // Filters, search and pagination all call this; it loads whichever tab is showing
   function loadAssets() {
-    if (state.view === 'history') return loadHistory();
+    if (state.view === 'history')   return loadHistory();
+    if (state.view === 'favorites') return loadSaved('/api/favorites');
+    if (state.view === 'lists') {
+      if (state.listId == null) return renderAssets({assets: [], total: 0});
+      return loadSaved(`/api/lists/${state.listId}/items`);
+    }
     const params = new URLSearchParams({
       q: state.q, source: state.src, type: state.type,
-      sort: state.sort, new_only: state.newOnly,
+      sort: state.sorts.results, new_only: state.newOnly,
       page: state.page, limit: state.limit
     });
     fetch('/api/assets?' + params).then(r => r.json()).then(renderAssets);
   }
+
+  // Favorites and list items: same filters as history, own sort
+  function loadSaved(url) {
+    const params = new URLSearchParams({
+      q: state.q, source: state.src, type: state.type,
+      sort: state.sorts[state.view], page: state.page, limit: state.limit
+    });
+    fetch(url + '?' + params).then(r => r.json()).then(renderAssets);
+  }
+
+  const RESULT_LABELS = {
+    results: 'assets found', history: 'viewed assets',
+    favorites: 'favorites', lists: 'items in this list',
+  };
 
   function renderAssets(data) {
     state.total = data.total;
@@ -1009,20 +1156,27 @@
     const grid  = document.getElementById('asset-grid');
     const label = document.getElementById('results-label');
     const plbl  = document.getElementById('page-label');
-    const isHistory = state.view === 'history';
+    const view  = state.view;
 
-    label.innerHTML = isHistory
-      ? `<strong>${data.total}</strong> viewed assets`
-      : `<strong>${data.total}</strong> assets found`;
+    label.innerHTML = `<strong>${data.total}</strong> ${RESULT_LABELS[view]}`;
     const totalPages = Math.ceil(data.total / state.limit);
     plbl.textContent = totalPages > 1 ? `Page ${state.page} of ${totalPages}` : '';
 
     if (!data.assets.length) {
-      const filtered = state.q || state.src !== 'all' || state.type !== 'all' || (!isHistory && state.newOnly);
+      const filtered = state.q || state.src !== 'all' || state.type !== 'all' || (view === 'results' && state.newOnly);
       let icon = '🔍', title = 'No results', sub = 'Try adjusting your filters';
-      if (isHistory && !filtered) {
+      if (view === 'lists' && state.listId == null) {
+        icon = '📋'; title = 'No lists yet'; sub = 'Click ＋ New to create one, or ＋ on any asset';
+        label.textContent = 'No lists yet';
+      } else if (filtered) {
+        // keep the generic "No results"
+      } else if (view === 'history') {
         icon = '🕘'; title = 'No history yet'; sub = 'Assets you open will show up here';
-      } else if (!isHistory && !filtered && state.crawlStatus === 'idle') {
+      } else if (view === 'favorites') {
+        icon = '♥'; title = 'No favorites yet'; sub = 'Click ♡ on any asset to save it here';
+      } else if (view === 'lists') {
+        icon = '📋'; title = 'This list is empty'; sub = 'Click ＋ on any asset to add it';
+      } else if (state.crawlStatus === 'idle') {
         icon = '🎮'; title = 'Ready to crawl'; sub = 'Configure settings and hit Start Crawl';
         label.textContent = 'No results yet — run a crawl to get started';
       }
@@ -1031,32 +1185,52 @@
       return;
     }
 
-    grid.innerHTML = data.assets.map((a, i) => renderCard(a, i, isHistory)).join('');
+    grid.innerHTML = data.assets.map((a, i) => renderCard(a, i)).join('');
 
     renderPagination(totalPages);
     updateTypePills(data.assets);
   }
 
-  // One card, shared by both tabs. `i` indexes state.currentAssets.
-  function renderCard(a, i, isHistory) {
+  // Per-tab ✕ button on cards. Favorites has none: its ♥ button removes.
+  const REMOVE_ACTIONS = {
+    history: ['removeHistory', 'Remove from history'],
+    lists:   ['removeFromList', 'Remove from this list'],
+  };
+
+  // One card, shared by all tabs. `i` indexes state.currentAssets.
+  function renderCard(a, i) {
+    const view   = state.view;
     const icon   = TYPE_ICONS[a.asset_type] || '🗂';
     const isFree = ['free','$0.00','0','¥0'].includes((a.price||'').toLowerCase());
-    const newBadge = (!isHistory && a.is_new) ? `<span class="new-badge">NEW</span>` : '';
-    const viewed   = !isHistory && state.viewedUrls.has(a.url);
+    const newBadge = (view === 'results' && a.is_new) ? `<span class="new-badge">NEW</span>` : '';
+    const viewed   = view !== 'history' && state.viewedUrls.has(a.url);
     const viewedBadge = viewed ? `<span class="viewed-badge">VIEWED</span>` : '';
     // Show the type icon if there's no image or the image fails to load
     const thumb  = (a.image_url && a.image_url !== 'N/A')
       ? `<img src="${esc(a.image_url)}" onerror="this.parentNode.innerHTML='<span>${icon}</span>'" loading="lazy">`
       : `<span>${icon}</span>`;
     const srcLabel = a.source === 'booth' ? 'booth.pm' : a.source;
-    const historyMeta = isHistory
-      ? `<div class="history-meta">Viewed ${timeAgo(a.last_clicked)}${a.click_count > 1 ? ` · ${a.click_count}×` : ''}</div>`
+    let historyMeta = '';
+    if (view === 'history')
+      historyMeta = `<div class="history-meta">Viewed ${timeAgo(a.last_clicked)}${a.click_count > 1 ? ` · ${a.click_count}×` : ''}</div>`;
+    else if (view === 'favorites' || view === 'lists')
+      historyMeta = `<div class="history-meta">Added ${timeAgo(a.added_at)}</div>`;
+    const remove = REMOVE_ACTIONS[view];
+    const removeBtn = remove
+      ? `<button class="remove-btn" title="${remove[1]}" onclick="event.stopPropagation(); ${remove[0]}(${i})">✕</button>`
       : '';
-    const removeBtn = isHistory
-      ? `<button class="remove-btn" title="Remove from history" onclick="event.stopPropagation(); removeHistory(${i})">✕</button>`
-      : '';
+    const fav     = state.favUrls.has(a.url);
+    const inLists = (state.memberships[a.url] || []).length;
+    const actions = `
+        <div class="card-actions">
+          <button class="card-btn fav-btn ${fav ? 'on' : ''}" title="${fav ? 'Remove from favorites' : 'Add to favorites'}"
+                  onclick="event.stopPropagation(); toggleFavorite(${i})">${fav ? '♥' : '♡'}</button>
+          <button class="card-btn list-btn ${inLists ? 'on' : ''}" title="${inLists ? `In ${inLists} list${inLists > 1 ? 's' : ''}` : 'Add to list'}"
+                  onclick="event.stopPropagation(); openListPopover(${i}, this)">＋</button>
+        </div>`;
     return `
       <div class="asset-card ${viewed ? 'viewed' : ''}" onclick="openAsset(${i})">
+        ${actions}
         ${removeBtn}
         <div class="asset-thumb">${thumb}</div>
         <div class="asset-body">
@@ -1076,24 +1250,25 @@
   function loadHistory() {
     const params = new URLSearchParams({
       q: state.q, source: state.src, type: state.type,
-      sort: state.histSort, page: state.page, limit: state.limit
+      sort: state.sorts.history, page: state.page, limit: state.limit
     });
     fetch('/api/history?' + params).then(r => r.json()).then(d => {
       renderAssets(d);
       // Refresh the tab badge from the unfiltered count when no filters are applied
-      if (!state.q && state.src === 'all' && state.type === 'all') setHistoryCount(d.total);
+      if (!state.q && state.src === 'all' && state.type === 'all') setCount('history-count', d.total);
     });
   }
 
   function loadHistoryUrls() {
     fetch('/api/history/urls').then(r => r.json()).then(d => {
       state.viewedUrls = new Set(d.urls);
-      setHistoryCount(d.urls.length);
+      setCount('history-count', d.urls.length);
     });
   }
 
-  function setHistoryCount(n) {
-    document.getElementById('history-count').textContent = n;
+  // Tab badge counts: history-count, favorites-count, lists-count
+  function setCount(id, n) {
+    document.getElementById(id).textContent = n;
   }
 
   // Open the asset in a new tab and record the click. window.open runs first,
@@ -1111,7 +1286,7 @@
     }).then(() => {
       if (!state.viewedUrls.has(a.url)) {
         state.viewedUrls.add(a.url);
-        setHistoryCount(state.viewedUrls.size);
+        setCount('history-count', state.viewedUrls.size);
       }
       loadAssets();  // show the VIEWED badge / updated count and timestamp
     });
@@ -1122,35 +1297,230 @@
     if (!a) return;
     fetch('/api/history?' + new URLSearchParams({url: a.url}), {method: 'DELETE'}).then(() => {
       state.viewedUrls.delete(a.url);
-      setHistoryCount(state.viewedUrls.size);
-      // Step back a page if this removed the last card on it
-      if (state.currentAssets.length === 1 && state.page > 1) state.page--;
+      setCount('history-count', state.viewedUrls.size);
+      stepBackIfPageEmptied();
       loadHistory();
     });
   }
 
+  // After removing a card: step back a page if it was the last one on this page
+  function stepBackIfPageEmptied() {
+    if (state.currentAssets.length === 1 && state.page > 1) state.page--;
+  }
+
   function clearHistory() {
-    if (!confirm('Clear all viewing history? This cannot be undone.')) return;
+    if (!confirm('Clear all viewing history? Favorites and lists are kept. This cannot be undone.')) return;
     fetch('/api/history', {method: 'DELETE'}).then(() => {
       state.viewedUrls = new Set();
-      setHistoryCount(0);
+      setCount('history-count', 0);
       state.page = 1;
       loadHistory();
     });
   }
 
+  // ── Favorites ──────────────────────────────────────────────────────────────
+  function loadFavoriteUrls() {
+    fetch('/api/favorites/urls').then(r => r.json()).then(d => {
+      state.favUrls = new Set(d.urls);
+      setCount('favorites-count', d.urls.length);
+      if (state.currentAssets.length) loadAssets();  // cards may have rendered first
+    });
+  }
+
+  function toggleFavorite(i) {
+    const a = state.currentAssets[i];
+    if (!a) return;
+    const wasFav = state.favUrls.has(a.url);
+    const req = wasFav
+      ? fetch('/api/favorites?' + new URLSearchParams({url: a.url}), {method: 'DELETE'})
+      : fetch('/api/favorites', {method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(a)});
+    req.then(() => {
+      if (wasFav) state.favUrls.delete(a.url); else state.favUrls.add(a.url);
+      setCount('favorites-count', state.favUrls.size);
+      if (wasFav && state.view === 'favorites') stepBackIfPageEmptied();
+      loadAssets();
+    });
+  }
+
+  // ── Named lists ────────────────────────────────────────────────────────────
+  // Returns a promise so callers can wait for state.lists to be current
+  function loadLists() {
+    return fetch('/api/lists').then(r => r.json()).then(d => {
+      state.lists = d.lists;
+      // Keep the selected list if it still exists, else fall back to the most recently changed one
+      if (!state.lists.some(l => l.id === state.listId)) {
+        const latest = state.lists.reduce((a, l) => (!a || l.updated_at > a.updated_at) ? l : a, null);
+        state.listId = latest ? latest.id : null;
+      }
+      setCount('lists-count', state.lists.length);
+      renderListSelect();
+    });
+  }
+
+  function loadMemberships() {
+    return fetch('/api/lists/memberships').then(r => r.json()).then(d => {
+      state.memberships = d.memberships;
+      if (state.currentAssets.length) loadAssets();
+    });
+  }
+
+  function currentList() {
+    return state.lists.find(l => l.id === state.listId);
+  }
+
+  function renderListSelect() {
+    const sel = document.getElementById('list-select');
+    sel.innerHTML = state.lists.map(l =>
+      `<option value="${l.id}">${esc(l.name)} (${l.count})</option>`).join('');
+    if (state.listId != null) sel.value = state.listId;
+    const has = state.lists.length ? '' : 'none';
+    sel.style.display = has;
+    document.getElementById('rename-list-btn').style.display = has;
+    document.getElementById('delete-list-btn').style.display = has;
+  }
+
+  function selectList(id) {
+    state.listId = Number(id);
+    state.page = 1;
+    loadAssets();
+  }
+
+  // POST /api/lists; resolves to the new list, or null (after alerting) on error
+  function createList(name) {
+    return fetch('/api/lists', {method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({name})})
+      .then(r => r.json().then(d => {
+        if (!r.ok) { alert(d.error); return null; }
+        return d.list;
+      }));
+  }
+
+  function newList() {
+    const name = (prompt('Name for the new list:') || '').trim();
+    if (!name) return;
+    createList(name).then(l => {
+      if (!l) return;
+      state.listId = l.id;
+      state.page = 1;
+      loadLists().then(loadAssets);
+    });
+  }
+
+  function renameList() {
+    const l = currentList();
+    if (!l) return;
+    const name = (prompt('Rename list:', l.name) || '').trim();
+    if (!name || name === l.name) return;
+    fetch(`/api/lists/${l.id}`, {method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({name})})
+      .then(r => r.json().then(d => {
+        if (!r.ok) { alert(d.error); return; }
+        loadLists();
+      }));
+  }
+
+  function deleteList() {
+    const l = currentList();
+    if (!l) return;
+    const items = l.count === 1 ? '1 item' : `${l.count} items`;
+    if (!confirm(`Delete the list "${l.name}" (${items})? The assets stay in your history and favorites.`)) return;
+    fetch(`/api/lists/${l.id}`, {method: 'DELETE'}).then(() => {
+      state.listId = null;
+      state.page = 1;
+      Promise.all([loadLists(), loadMemberships()]).then(loadAssets);
+    });
+  }
+
+  // Add or remove one asset from one list, then refresh counts, memberships and cards
+  function setListItem(listId, a, add) {
+    const req = add
+      ? fetch(`/api/lists/${listId}/items`, {method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(a)})
+      : fetch(`/api/lists/${listId}/items?` + new URLSearchParams({url: a.url}), {method: 'DELETE'});
+    return req.then(() => {
+      const ids = new Set(state.memberships[a.url] || []);
+      if (add) ids.add(listId); else ids.delete(listId);
+      if (ids.size) state.memberships[a.url] = [...ids]; else delete state.memberships[a.url];
+      return loadLists();
+    }).then(loadAssets);
+  }
+
+  function removeFromList(i) {
+    const a = state.currentAssets[i];
+    if (!a || state.listId == null) return;
+    stepBackIfPageEmptied();
+    setListItem(state.listId, a, false);
+  }
+
+  // ── "Add to list" popover ──────────────────────────────────────────────────
+  let popoverAsset = null;  // the asset whose ＋ button opened the popover
+
+  function openListPopover(i, btn) {
+    popoverAsset = state.currentAssets[i];
+    if (!popoverAsset) return;
+    renderListPopover();
+    document.getElementById('new-list-input').value = '';
+    const pop = document.getElementById('list-popover');
+    pop.classList.add('open');
+    // Below the button, or above it if there's no room; kept inside the viewport
+    const r = btn.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    pop.style.top  = (r.bottom + 4 + h > window.innerHeight
+      ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+  }
+
+  function closeListPopover() {
+    document.getElementById('list-popover').classList.remove('open');
+    popoverAsset = null;
+  }
+
+  function renderListPopover() {
+    const ids = state.memberships[popoverAsset.url] || [];
+    document.getElementById('list-options').innerHTML = state.lists.length
+      ? state.lists.map(l => `
+          <label class="list-option">
+            <input type="checkbox" ${ids.includes(l.id) ? 'checked' : ''}
+                   onchange="togglePopoverList(${l.id}, this.checked)">
+            <span title="${esc(l.name)}">${esc(l.name)}</span>
+          </label>`).join('')
+      : `<div class="list-empty">No lists yet. Name one below.</div>`;
+  }
+
+  function togglePopoverList(listId, add) {
+    const a = popoverAsset;
+    if (!a) return;
+    if (!add && state.view === 'lists' && listId === state.listId) stepBackIfPageEmptied();
+    setListItem(listId, a, add).then(() => { if (popoverAsset === a) renderListPopover(); });
+  }
+
+  function addToNewList() {
+    const input = document.getElementById('new-list-input');
+    const name = input.value.trim();
+    const a = popoverAsset;
+    if (!name || !a) return;
+    createList(name).then(l => {
+      if (!l) return;
+      input.value = '';
+      return setListItem(l.id, a, true).then(() => { if (popoverAsset === a) renderListPopover(); });
+    });
+  }
+
+  // Close the popover on any click outside it (the ＋ buttons stop propagation)
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#list-popover')) closeListPopover();
+  });
+
   function setView(view) {
     if (view === state.view) return;
     state.view = view;
     state.page = 1;
+    closeListPopover();
     document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
-    const isHistory = view === 'history';
-    // "New only" applies only to results; Clear history only to history
-    document.getElementById('new-only-btn').style.display = isHistory ? 'none' : '';
-    document.getElementById('clear-history-btn').style.display = isHistory ? '' : 'none';
+    // "New only" applies only to results; Clear history only to history; the list picker only to lists
+    document.getElementById('new-only-btn').style.display = view === 'results' ? '' : 'none';
+    document.getElementById('clear-history-btn').style.display = view === 'history' ? '' : 'none';
+    document.getElementById('list-controls').style.display = view === 'lists' ? '' : 'none';
     const sel = document.getElementById('sort-select');
     sel.innerHTML = SORT_OPTIONS[view].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
-    sel.value = isHistory ? state.histSort : state.sort;
+    sel.value = state.sorts[view];
     loadAssets();
   }
 
@@ -1260,7 +1630,7 @@
 
   function onSortChange() {
     const v = document.getElementById('sort-select').value;
-    if (state.view === 'history') state.histSort = v; else state.sort = v;
+    state.sorts[state.view] = v;
     state.page = 1;
     loadAssets();
   }
@@ -1324,8 +1694,10 @@
     document.body.style.overflow = '';
   }
 
-  // Close drawer with Escape key
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+  // Close drawer and list popover with Escape key
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeSidebar(); closeListPopover(); } });
+  // The popover is fixed-position, so close it rather than leave it floating when the grid scrolls
+  document.querySelector('.content').addEventListener('scroll', closeListPopover);
 
 </script>
 </body>

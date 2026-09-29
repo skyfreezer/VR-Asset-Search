@@ -17,11 +17,11 @@ import db
 from waitress import serve
 
 app = Flask(__name__)
-db.init_db()  # create history tables on first run
+db.init_db()  # create history, favorites, and list tables on first run
 
 # In-memory store for the most recent crawl results.
 # Everything here is lost on restart; seen_urls.json (see crawler.py) and the
-# click history in vr_assets.db (see db.py) persist.
+# history, favorites, and lists in vr_assets.db (see db.py) persist.
 _store: dict = {
     "assets": [],
     "status": "idle",   # idle | running | done | error
@@ -235,20 +235,30 @@ def api_export(fmt: str):
 
 # ── Click history (persisted in SQLite, see db.py) ──────────────────────────
 
+def _query_args(default_sort: str) -> dict:
+    """Filter/sort/paging params shared by history, favorites, and list items."""
+    return {
+        "q":          request.args.get("q", "").strip(),
+        "source":     request.args.get("source", "all"),
+        "asset_type": request.args.get("type", "all"),
+        "sort":       request.args.get("sort", default_sort),
+        "page":       max(1, int(request.args.get("page", 1))),
+        "limit":      min(50, int(request.args.get("limit", 24))),
+    }
+
+
+def _paged(fetch, args: dict):
+    """Run a db getter with _query_args() output; respond in /api/assets shape."""
+    rows, total = fetch(**args)
+    return jsonify({"assets": rows, "total": total,
+                    "page": args["page"], "limit": args["limit"]})
+
+
 @app.route("/api/history", methods=["GET"])
 def api_history():
     """Paginated click history. Same query params as /api/assets, except sort:
     recent | most_clicked | title | price_asc | price_desc."""
-    page  = max(1, int(request.args.get("page", 1)))
-    limit = min(50, int(request.args.get("limit", 24)))
-    rows, total = db.get_history(
-        q=request.args.get("q", "").strip(),
-        source=request.args.get("source", "all"),
-        asset_type=request.args.get("type", "all"),
-        sort=request.args.get("sort", "recent"),
-        page=page, limit=limit,
-    )
-    return jsonify({"assets": rows, "total": total, "page": page, "limit": limit})
+    return _paged(db.get_history, _query_args("recent"))
 
 
 @app.route("/api/history", methods=["POST"])
@@ -277,6 +287,129 @@ def api_history_urls():
 @app.route("/api/history/stats")
 def api_history_stats():
     return jsonify(db.history_stats())
+
+
+# ── Favorites and named lists (persisted in SQLite, see db.py) ──────────────
+# Favorite and list-item sorts: added | title | price_asc | price_desc
+
+@app.route("/api/favorites", methods=["GET"])
+def api_favorites():
+    return _paged(db.get_favorites, _query_args("added"))
+
+
+@app.route("/api/favorites", methods=["POST"])
+def api_favorites_add():
+    """Favorite an asset. Body: the asset dict as returned by /api/assets."""
+    asset = request.get_json(silent=True) or {}
+    if not asset.get("url"):
+        return jsonify({"error": "url is required"}), 400
+    db.add_favorite(asset, _price_sort_key(asset))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/favorites", methods=["DELETE"])
+def api_favorites_delete():
+    """Unfavorite one asset (?url=...)."""
+    url = request.args.get("url")
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    return jsonify({"ok": True, "removed": db.remove_favorite(url)})
+
+
+@app.route("/api/favorites/urls")
+def api_favorites_urls():
+    return jsonify({"urls": db.get_favorite_urls()})
+
+
+_MAX_LIST_NAME = 60
+
+
+def _list_name() -> tuple[str | None, tuple | None]:
+    """(name, None) from the JSON body, or (None, error_response)."""
+    name = ((request.get_json(silent=True) or {}).get("name") or "").strip()
+    if not name:
+        return None, (jsonify({"error": "name is required"}), 400)
+    if len(name) > _MAX_LIST_NAME:
+        return None, (jsonify({"error": f"name must be {_MAX_LIST_NAME} characters or fewer"}), 400)
+    return name, None
+
+
+def _duplicate(name: str):
+    return jsonify({"error": f'A list named "{name}" already exists'}), 409
+
+
+def _no_list():
+    return jsonify({"error": "List not found"}), 404
+
+
+@app.route("/api/lists", methods=["GET"])
+def api_lists():
+    return jsonify({"lists": db.get_lists()})
+
+
+@app.route("/api/lists", methods=["POST"])
+def api_lists_create():
+    """Create a list. Body: {"name": "..."}. Names are unique, ignoring case."""
+    name, err = _list_name()
+    if err:
+        return err
+    try:
+        return jsonify({"ok": True, "list": db.create_list(name)}), 201
+    except db.DuplicateListName:
+        return _duplicate(name)
+
+
+@app.route("/api/lists/<int:list_id>", methods=["PATCH"])
+def api_lists_rename(list_id: int):
+    name, err = _list_name()
+    if err:
+        return err
+    try:
+        if not db.rename_list(list_id, name):
+            return _no_list()
+    except db.DuplicateListName:
+        return _duplicate(name)
+    return jsonify({"ok": True, "list": db.get_list(list_id)})
+
+
+@app.route("/api/lists/<int:list_id>", methods=["DELETE"])
+def api_lists_delete(list_id: int):
+    if not db.delete_list(list_id):
+        return _no_list()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/lists/<int:list_id>/items", methods=["GET"])
+def api_list_items(list_id: int):
+    if not db.get_list(list_id):
+        return _no_list()
+    return _paged(lambda **a: db.get_list_items(list_id, **a), _query_args("added"))
+
+
+@app.route("/api/lists/<int:list_id>/items", methods=["POST"])
+def api_list_items_add(list_id: int):
+    """Add an asset to a list. Body: the asset dict as returned by /api/assets."""
+    asset = request.get_json(silent=True) or {}
+    if not asset.get("url"):
+        return jsonify({"error": "url is required"}), 400
+    if not db.add_to_list(list_id, asset, _price_sort_key(asset)):
+        return _no_list()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/lists/<int:list_id>/items", methods=["DELETE"])
+def api_list_items_delete(list_id: int):
+    """Remove one asset (?url=...) from a list."""
+    url = request.args.get("url")
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+    return jsonify({"ok": True, "removed": db.remove_from_list(list_id, url)})
+
+
+@app.route("/api/lists/memberships")
+def api_list_memberships():
+    """{url: [list_id, ...]}, so the UI can show which lists each card is in."""
+    return jsonify({"memberships": db.get_list_memberships()})
 
 
 if __name__ == "__main__":
